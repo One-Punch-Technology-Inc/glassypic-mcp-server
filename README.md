@@ -1,5 +1,6 @@
 # @glassypic/mcp-server
 
+[![AgentHub 已收录：glassypic](https://myagenthub.cn/badge/io.github.onepunchtechnology/glassypic)](https://myagenthub.cn/p/io.github.onepunchtechnology/glassypic)
 [![npm version](https://img.shields.io/npm/v/@glassypic/mcp-server.svg)](https://www.npmjs.com/package/@glassypic/mcp-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-brightgreen.svg)](https://modelcontextprotocol.io)
