@@ -29,6 +29,9 @@ COPY --chown=appuser:appgroup --from=build /app/packages/mcp-server/dist/ ./pack
 
 USER appuser
 
+# Express includes stack traces in error responses unless NODE_ENV is "production".
+ENV NODE_ENV=production
+
 WORKDIR /app/packages/mcp-server
 
 EXPOSE 8080

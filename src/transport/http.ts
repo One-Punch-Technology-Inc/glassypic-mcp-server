@@ -19,6 +19,41 @@ interface Session {
 const MAX_SESSIONS = 10_000;
 const SESSION_IDLE_MS = 30 * 60 * 1000; // 30 minutes
 
+function jsonRpcError(code: number, message: string) {
+  return { jsonrpc: "2.0", id: null, error: { code, message } };
+}
+
+/**
+ * Terminal Express error handler. Without it, errors thrown by `express.json()` (malformed
+ * or oversized bodies) fall through to Express's default handler, which answers with an HTML
+ * page and, when NODE_ENV is not "production", a stack trace with server file paths.
+ * MCP clients expect a JSON-RPC error envelope instead. Must keep four parameters or
+ * Express will not treat it as an error handler.
+ */
+export function jsonRpcErrorHandler(
+  err: unknown,
+  _req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+): void {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+  const errorType = (err as { type?: string } | null)?.type;
+  if (errorType === "entity.parse.failed") {
+    res.status(400).json(jsonRpcError(-32700, "Parse error"));
+    return;
+  }
+  if (errorType === "entity.too.large") {
+    res.status(413).json(jsonRpcError(-32600, "Request too large"));
+    return;
+  }
+  // Log the real error server-side; never put it in the response.
+  console.error("Unhandled HTTP error:", err);
+  res.status(500).json(jsonRpcError(-32603, "Internal error"));
+}
+
 /**
  * Starts the HTTP server for remote MCP.
  * @param createServer Factory that creates a new McpServer with tools registered.
@@ -163,6 +198,9 @@ export async function startHttpServer(createServer: () => McpServer): Promise<vo
       lastActivity: Date.now(),
     });
   });
+
+  // Must be registered after all routes
+  app.use(jsonRpcErrorHandler);
 
   // Graceful shutdown
   const port = parseInt(process.env.PORT ?? "8080", 10);
