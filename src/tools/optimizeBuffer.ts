@@ -72,7 +72,7 @@ export async function optimizeBuffer(params: OptimizeBufferParams): Promise<Opti
     headers: authHeaders,
   });
 
-  const downloadResponse = await fetch(`${params.baseUrl}/download/${job.id}`, {
+  const downloadResponse = await fetch(`${params.baseUrl}/download/${encodeURIComponent(job.id)}`, {
     headers: { ...authHeaders },
   });
   if (!downloadResponse.ok) {

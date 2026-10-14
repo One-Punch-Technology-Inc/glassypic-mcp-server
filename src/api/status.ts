@@ -65,7 +65,7 @@ export function waitForCompletion(params: StatusParams): Promise<CompletedJob> {
           }
         : undefined;
 
-    const es = new ESConstructor(`${baseUrl}/status/${jobId}/stream`, esOptions);
+    const es = new ESConstructor(`${baseUrl}/status/${encodeURIComponent(jobId)}/stream`, esOptions);
 
     const timeout = setTimeout(() => {
       es.close();

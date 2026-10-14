@@ -60,8 +60,12 @@ export class SessionManager {
   }
 
   private writeData(data: SessionData): void {
-    fs.mkdirSync(this.sessionDir, { recursive: true });
-    fs.writeFileSync(this.sessionFile, JSON.stringify(data, null, 2), { mode: 0o600 });
+    // 0700 dir + write-then-rename: `mode` on writeFileSync only applies when the file is
+    // created, and a crash mid-write would otherwise leave a truncated session.json.
+    fs.mkdirSync(this.sessionDir, { recursive: true, mode: 0o700 });
+    const tempFile = `${this.sessionFile}.${process.pid}.tmp`;
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), { mode: 0o600 });
+    fs.renameSync(tempFile, this.sessionFile);
   }
 
   getToken(): string | null {

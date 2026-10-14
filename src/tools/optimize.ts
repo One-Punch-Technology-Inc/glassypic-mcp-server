@@ -205,7 +205,7 @@ export async function optimizeImage(
 
   // 6. In HTTP mode: return download URL (no local disk write)
   if (process.env.MCP_TRANSPORT === "http") {
-    const downloadUrl = `${baseUrl}/download/${job.id}`;
+    const downloadUrl = `${baseUrl}/download/${encodeURIComponent(job.id)}`;
     return {
       output_path: downloadUrl,
       output_size_bytes: completedJob.processed_size ?? 0,

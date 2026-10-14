@@ -14,6 +14,7 @@ const MAX_CACHE_SIZE = 10_000;
  */
 export class AnonymousSessionStore {
   private readonly cache = new Map<string, CachedSession>(); // sessionId → { jwt, expiresAt }
+  private readonly inflight = new Map<string, Promise<string | null>>(); // sessionId → pending sign-in
 
   async getOrCreate(sessionId: string): Promise<string | null> {
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) return null;
@@ -26,10 +27,35 @@ export class AnonymousSessionStore {
       return cached.jwt;
     }
 
-    // Fresh client per call to avoid race conditions between concurrent requests
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    // Auth is resolved lazily (first tools/call), so a client can fire several calls at once
+    // for a brand-new session. Share one in-flight sign-in per session ID: otherwise each call
+    // mints its own Supabase user — splitting credits and actor-scoped jobs across identities
+    // and spending extra of the per-IP anonymous sign-in quota.
+    const pending = this.inflight.get(sessionId);
+    if (pending) return pending;
+
+    const signIn = this.signIn(sessionId, process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    this.inflight.set(sessionId, signIn);
+    try {
+      return await signIn;
+    } finally {
+      this.inflight.delete(sessionId);
+    }
+  }
+
+  private async signIn(sessionId: string, supabaseUrl: string, anonKey: string): Promise<string | null> {
+    // Fresh client per sign-in; the supabase client itself holds no shared state between calls
+    const supabase = createClient(supabaseUrl, anonKey);
     const { data, error } = await supabase.auth.signInAnonymously();
-    if (error || !data.session) return null;
+    if (error || !data.session) {
+      // Previously silent. A failure here (commonly Supabase's per-IP anonymous sign-in rate
+      // limit) leaves the session unauthenticated, so tool calls fail later with a confusing
+      // 403 — make the root cause visible in Cloud Logging.
+      console.error(
+        `Anonymous sign-in failed (status ${error?.status ?? "none"}): ${error?.message ?? "no session returned"}`
+      );
+      return null;
+    }
 
     const jwt = data.session.access_token;
     const expiresAt = Date.now() + (data.session.expires_in ?? 3600) * 1000;

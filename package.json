@@ -50,8 +50,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "@supabase/supabase-js": "^2.99.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@supabase/supabase-js": "^2.117.3",
     "cors": "^2.8.6",
     "eventsource": "^3.0.6",
     "express": "^5.2.1",

@@ -37,7 +37,7 @@ export async function requestDeviceCode(baseUrl: string): Promise<DeviceCodeResp
 }
 
 export async function pollForToken(baseUrl: string, deviceCode: string): Promise<TokenPollResponse> {
-  const response = await fetch(`${baseUrl}/mcp/auth/token?device_code=${deviceCode}`);
+  const response = await fetch(`${baseUrl}/mcp/auth/token?device_code=${encodeURIComponent(deviceCode)}`);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new ApiError(body.detail || "Token poll failed", response.status);

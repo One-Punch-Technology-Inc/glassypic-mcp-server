@@ -14,7 +14,7 @@ interface DownloadResult {
 export async function downloadFile(params: DownloadParams): Promise<DownloadResult> {
   const { baseUrl, jobId, authHeaders = {} } = params;
 
-  const response = await fetch(`${baseUrl}/download/${jobId}`, {
+  const response = await fetch(`${baseUrl}/download/${encodeURIComponent(jobId)}`, {
     headers: authHeaders,
   });
 

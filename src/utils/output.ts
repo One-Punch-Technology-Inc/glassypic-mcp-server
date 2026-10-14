@@ -11,6 +11,14 @@ interface OutputPathParams {
   cwd?: string;
 }
 
+/** Reduces a name to `[A-Za-z0-9._-]` with no leading/trailing dots or dashes; "" if nothing is left. */
+export function sanitizeFilenameStem(name: string): string {
+  return name
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[.-]+|[.-]+$/g, "");
+}
+
 function getPolishedFilename(
   filename: string,
   outputFormat: string | undefined,
@@ -25,8 +33,11 @@ function getPolishedFilename(
     newExt = `.${outputFormat}`;
   }
 
-  if (seoFilename) {
-    return `${seoFilename}${newExt}`;
+  // The SEO name is server-generated from image content. The API already slugs it, but
+  // it becomes part of a local path here, so never trust it to be separator-free.
+  const safeSeoName = seoFilename ? sanitizeFilenameStem(seoFilename) : "";
+  if (safeSeoName) {
+    return `${safeSeoName}${newExt}`;
   }
 
   const name = path.basename(filename, ext);
