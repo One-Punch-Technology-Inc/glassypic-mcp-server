@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { uploadFile, uploadUrl } from "../api/upload.js";
 import { triggerProcessing, type ProcessingSettings } from "../api/process.js";
 import { waitForCompletion, STANDARD_TIMEOUT_MS, UPSCALE_TIMEOUT_MS } from "../api/status.js";
-import { downloadFile } from "../api/download.js";
+import { downloadFile, getSignedDownloadUrl } from "../api/download.js";
 import { resolveInput as resolveInputUtil, isUrl, extractFilenameFromUrl } from "../utils/input.js";
 
 /**
@@ -19,6 +19,8 @@ export function resolveInput(input: string): ReturnType<typeof resolveInputUtil>
 import { resolveUniqueOutputPath } from "../utils/output.js";
 import { resolveApiBaseUrl, buildAuthHeaders } from "../api/client.js";
 import { SessionManager } from "../session/manager.js";
+import { getRequestSessionId } from "../auth/context.js";
+import { guestSessions } from "../auth/guest.js";
 
 export interface OptimizeImageParams {
   input: string;
@@ -41,7 +43,10 @@ export interface OptimizeImageParams {
 
 export interface OptimizeImageResult {
   [key: string]: unknown;
+  /** Local mode: absolute path of the saved file. Remote mode: a download URL (see download_expires_in_seconds). */
   output_path: string;
+  /** Remote mode only: seconds until `output_path` (a pre-signed link) stops working. */
+  download_expires_in_seconds?: number | null;
   output_size_bytes: number;
   output_width_px: number | null;
   output_height_px: number | null;
@@ -62,55 +67,98 @@ export async function optimizeImage(
 
   // 1. Resolve input and upload
   let authHeaders = buildAuthHeaders(params.authToken);
-  let uploadResult: Awaited<ReturnType<typeof uploadFile>>;
-  let inputFilename: string;
-  let inputIsUrl: boolean;
+  // Assigned inside upload() below, which is always awaited before they are read.
+  let uploadResult!: Awaited<ReturnType<typeof uploadFile>>;
+  let inputFilename!: string;
+  let inputIsUrl!: boolean;
 
-  if (params._gif_temp_file_id && params.confirm_gif_cost) {
-    // Reuse the upload from a previous GIF cost warning — no re-upload needed
-    inputFilename = isUrl(params.input)
-      ? extractFilenameFromUrl(params.input)
-      : (await resolveInput(params.input)).filename;
-    inputIsUrl = isUrl(params.input);
-    uploadResult = {
-      temp_file_id: params._gif_temp_file_id,
-      original_filename: inputFilename,
-      file_size: 0,
-      mime_type: "image/gif",
-      session_token: null,
-    };
-  } else if (isUrl(params.input)) {
-    // URL input: use server-side fetch (skip client-side download)
-    inputFilename = extractFilenameFromUrl(params.input);
-    inputIsUrl = true;
-    uploadResult = await uploadUrl({
-      baseUrl,
-      url: params.input,
-      filename: inputFilename,
-      authHeaders,
-    });
+  // Remote server only (undefined for stdio): the MCP session this call belongs to.
+  const remoteSessionId = getRequestSessionId();
+  // A remote guest has no credentials until its first upload creates a guest session. Several
+  // first calls can arrive at once, so they upload one at a time (see guestSessions): the
+  // second then finds the first's token instead of creating a second guest identity.
+  const serializeFirstUpload =
+    remoteSessionId !== undefined &&
+    params.authToken === undefined &&
+    Object.keys(authHeaders).length === 0;
+
+  const upload = async () => {
+    if (serializeFirstUpload) {
+      // Re-read now that earlier uploads in this session may have stored a token.
+      authHeaders = buildAuthHeaders(params.authToken);
+    }
+
+    if (params._gif_temp_file_id && params.confirm_gif_cost) {
+      // Reuse the upload from a previous GIF cost warning — no re-upload needed
+      inputFilename = isUrl(params.input)
+        ? extractFilenameFromUrl(params.input)
+        : (await resolveInput(params.input)).filename;
+      inputIsUrl = isUrl(params.input);
+      uploadResult = {
+        temp_file_id: params._gif_temp_file_id,
+        original_filename: inputFilename,
+        file_size: 0,
+        mime_type: "image/gif",
+        session_token: null,
+      };
+    } else if (isUrl(params.input)) {
+      // URL input: use server-side fetch (skip client-side download)
+      inputFilename = extractFilenameFromUrl(params.input);
+      inputIsUrl = true;
+      uploadResult = await uploadUrl({
+        baseUrl,
+        url: params.input,
+        filename: inputFilename,
+        authHeaders,
+      });
+    } else {
+      // Local file: read bytes and upload
+      const input = await resolveInput(params.input);
+      inputFilename = input.filename;
+      inputIsUrl = input.isUrl;
+      uploadResult = await uploadFile({
+        baseUrl,
+        fileBuffer: input.buffer,
+        filename: input.filename,
+        authHeaders,
+      });
+    }
+
+    // If the upload minted a fresh guest session, persist it AND rebuild
+    // authHeaders from it before any further call. The pre-upload snapshot
+    // above is correct for the upload itself (a first-run guest has no session
+    // yet) but is stale for everything after — process/status/download are all
+    // actor-scoped, so reusing an empty/old header here 403s a first-run guest
+    // out of their own job (regression fixed 2026-07-22). Stored inside the
+    // exclusive section so a queued call sees it.
+    if (uploadResult.session_token) {
+      if (remoteSessionId !== undefined) {
+        // Remote guest. A caller with credentials (Authorization) or an explicit authToken
+        // keeps its own identity and never gets a guest token stored.
+        if (params.authToken === undefined && !authHeaders.Authorization) {
+          // The API answers with the guest session it used. When it rejected the token we
+          // sent (expired/unknown) it created a replacement, so a cached token must not win
+          // over the response. If a concurrent call already stored a newer replacement, keep
+          // that one for later calls (don't clobber it) but this job still runs under the
+          // session its own upload created.
+          const sentToken = authHeaders["X-Session-Token"];
+          const stored = guestSessions.get(remoteSessionId);
+          if (stored === null || stored === sentToken) {
+            guestSessions.set(remoteSessionId, uploadResult.session_token);
+          }
+          authHeaders = { "X-Session-Token": uploadResult.session_token };
+        }
+      } else if (process.env.MCP_TRANSPORT !== "http") {
+        new SessionManager().saveToken(uploadResult.session_token);
+        authHeaders = buildAuthHeaders(params.authToken);
+      }
+    }
+  };
+
+  if (serializeFirstUpload) {
+    await guestSessions.runExclusive(remoteSessionId, upload);
   } else {
-    // Local file: read bytes and upload
-    const input = await resolveInput(params.input);
-    inputFilename = input.filename;
-    inputIsUrl = input.isUrl;
-    uploadResult = await uploadFile({
-      baseUrl,
-      fileBuffer: input.buffer,
-      filename: input.filename,
-      authHeaders,
-    });
-  }
-
-  // If the upload minted a fresh guest session, persist it AND rebuild
-  // authHeaders from it before any further call. The pre-upload snapshot
-  // above is correct for the upload itself (a first-run guest has no session
-  // yet) but is stale for everything after — process/status/download are all
-  // actor-scoped, so reusing an empty/old header here 403s a first-run guest
-  // out of their own job (regression fixed 2026-07-22).
-  if (uploadResult.session_token && process.env.MCP_TRANSPORT !== "http") {
-    new SessionManager().saveToken(uploadResult.session_token);
-    authHeaders = buildAuthHeaders(params.authToken);
+    await upload();
   }
 
   // Check if animated GIF needs cost confirmation
@@ -203,11 +251,15 @@ export async function optimizeImage(
     headers: authHeaders,
   });
 
-  // 6. In HTTP mode: return download URL (no local disk write)
+  // 6. In HTTP mode: return a download link (no local disk write). `/download/{job}` itself is
+  // owner-gated, and the caller (a browser, or an agent that does not hold our session token)
+  // cannot satisfy that, so ask the API — with the owner's credentials — for a pre-signed link
+  // that needs none.
   if (process.env.MCP_TRANSPORT === "http") {
-    const downloadUrl = `${baseUrl}/download/${encodeURIComponent(job.id)}`;
+    const signed = await getSignedDownloadUrl({ baseUrl, jobId: job.id, authHeaders });
     return {
-      output_path: downloadUrl,
+      output_path: signed.url,
+      download_expires_in_seconds: signed.expiresInSeconds,
       output_size_bytes: completedJob.processed_size ?? 0,
       output_width_px: completedJob.processed_width ?? null,
       output_height_px: completedJob.processed_height ?? null,

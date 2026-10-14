@@ -129,7 +129,17 @@ server.registerTool(
     // Keep nullable primitive branches portable: zod-to-json-schema otherwise emits
     // type arrays that some MCP clients reject. These constraints are wire-neutral.
     outputSchema: {
-      output_path: z.string().describe("Absolute path where the optimized file was saved"),
+      output_path: z
+        .string()
+        .describe(
+          "Local server: absolute path where the optimized file was saved. " +
+          "Remote server: an https download URL that works without credentials until it expires " +
+          "(see download_expires_in_seconds); download it promptly.",
+        ),
+      download_expires_in_seconds: z
+        .union([z.number().finite(), z.null()])
+        .optional()
+        .describe("Remote server only: seconds until the output_path download URL expires"),
       output_size_bytes: z.number().describe("File size of the optimized image in bytes"),
       output_width_px: z.union([z.number().finite(), z.null()]).describe("Width of the output image in pixels"),
       output_height_px: z.union([z.number().finite(), z.null()]).describe("Height of the output image in pixels"),
@@ -168,8 +178,15 @@ server.registerTool(
         return { content: [{ type: "text" as const, text: result._gif_warning as string }] };
       }
 
+      // Remote results are a time-limited link, not a saved file: say so, so the link is used promptly.
+      const expiresInSeconds = result.download_expires_in_seconds;
+      const locationLine =
+        typeof expiresInSeconds === "number"
+          ? `Optimized. Download (link expires in ${Math.max(1, Math.round(expiresInSeconds / 60))} min): ${result.output_path}`
+          : `Optimized: ${result.output_path}`;
+
       const summary = [
-        `Optimized: ${result.output_path}`,
+        locationLine,
         `Size: ${(result.output_size_bytes / 1024).toFixed(1)} KB`,
         result.compression_ratio !== null
           ? `Compression: ${(result.compression_ratio * 100).toFixed(0)}%`

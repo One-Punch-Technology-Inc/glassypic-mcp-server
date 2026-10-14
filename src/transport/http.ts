@@ -9,6 +9,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { resolveAuthHeaders } from "../auth/resolver.js";
 import { requestContext } from "../auth/context.js";
+import { guestSessions } from "../auth/guest.js";
 import { resolveApiBaseUrl } from "../api/client.js";
 
 interface Session {
@@ -30,10 +31,8 @@ export function resolveMaxSessions(env: NodeJS.ProcessEnv = process.env): number
 }
 
 /**
- * True only when the request body contains a `tools/call`. Auth is resolved lazily because
- * resolving it can mint an anonymous Supabase user, and Supabase rate-limits anonymous
- * sign-ins per IP (default ~30/hour) — all guests share this server's IP. initialize,
- * tools/list, pings and notifications never call the API, so they must not spend that quota
+ * True only when the request body contains a `tools/call`. initialize, tools/list, pings and
+ * notifications never call the API, so there is no reason to verify credentials for them
  * (registry crawlers and liveness probes send exactly those).
  */
 export function requestNeedsAuth(body: unknown): boolean {
@@ -193,7 +192,7 @@ export async function startHttpServer(createServer: () => McpServer): Promise<vo
       }
 
       const authHeaders = requestNeedsAuth(req.body)
-        ? await resolveAuthHeaders(authHeader, existingSessionId)
+        ? await resolveAuthHeaders(authHeader)
         : {};
       try {
         await requestContext.run({ authHeaders, sessionId: existingSessionId }, async () => {
@@ -216,10 +215,10 @@ export async function startHttpServer(createServer: () => McpServer): Promise<vo
     }
 
     // --- New session: only a valid `initialize` request may create one ---
-    // Creating a session allocates a server instance, may mint an anonymous Supabase user, and
-    // can evict a real session at capacity. Without this gate, any unauthenticated request
-    // without a session ID (GET, DELETE, or a non-initialize POST) did all three and was then
-    // stored as a session even though the transport had already rejected it.
+    // Creating a session allocates a server instance and can evict a real session at capacity.
+    // Without this gate, any unauthenticated request without a session ID (GET, DELETE, or a
+    // non-initialize POST) did both and was then stored as a session even though the transport
+    // had already rejected it.
     if (req.method !== "POST" || !isInitializeRequest(req.body)) {
       res
         .status(400)
@@ -227,9 +226,8 @@ export async function startHttpServer(createServer: () => McpServer): Promise<vo
       return;
     }
 
-    // Pre-generate the session ID so the transport, anonStore, and sessions Map all share the same key.
-    // Without this, the anonStore would cache the anonymous JWT under a temp UUID that differs from
-    // transport.sessionId, causing a cache miss on every subsequent request.
+    // Pre-generate the session ID so the transport, the guest-session store, and the sessions Map
+    // all share the same key (the guest token is keyed by the ID the client sends back).
     const sessionId = randomUUID();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => sessionId,
@@ -240,14 +238,19 @@ export async function startHttpServer(createServer: () => McpServer): Promise<vo
     // onclose after connect() would silently replace that cleanup.
     transport.onclose = () => {
       sessions.delete(sessionId);
+      guestSessions.delete(sessionId);
     };
 
     const server = createServer();
     await server.connect(transport);
 
     // This request is always `initialize` (gated above), which never calls the API, so no
-    // auth is resolved here; the first tools/call resolves it lazily.
+    // auth is resolved here; each tools/call resolves it.
     const authHeaders: Record<string, string> = {};
+
+    // From here a close (including the failure paths below) runs onclose, which ends the
+    // guest session; before this point nothing has been allocated that needs ending.
+    guestSessions.begin(sessionId);
 
     try {
       await requestContext.run({ authHeaders, sessionId }, async () => {

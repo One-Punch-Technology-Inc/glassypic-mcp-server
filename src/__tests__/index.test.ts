@@ -66,6 +66,23 @@ describe("optimize_image tool handler (index.ts)", () => {
     };
   }
 
+  it("a remote result says the link expires, so it is used promptly", async () => {
+    vi.mocked(optimizeImage).mockResolvedValueOnce(
+      makeResult({
+        output_path: "https://storage.googleapis.com/bucket/job-1?sig=abc",
+        download_expires_in_seconds: 900,
+      }),
+    );
+
+    const result = await handler({ input: "https://example.com/hero.png" });
+
+    expect(result.content[0].text).toContain(
+      "Download (link expires in 15 min): https://storage.googleapis.com/bucket/job-1?sig=abc",
+    );
+    expect(result.content[0].text).not.toContain("Optimized: ");
+    expect(result.structuredContent.download_expires_in_seconds).toBe(900);
+  });
+
   it("summary includes path, size, compression ratio, format, dimensions, and alt text", async () => {
     vi.mocked(optimizeImage).mockResolvedValueOnce(makeResult());
 

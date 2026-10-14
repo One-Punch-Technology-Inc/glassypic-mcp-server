@@ -8,7 +8,7 @@ vi.mock("../../api/status.js", () => ({
   STANDARD_TIMEOUT_MS: 60000,
   UPSCALE_TIMEOUT_MS: 120000,
 }));
-vi.mock("../../api/download.js", () => ({ downloadFile: vi.fn() }));
+vi.mock("../../api/download.js", () => ({ downloadFile: vi.fn(), getSignedDownloadUrl: vi.fn() }));
 vi.mock("../../session/manager.js", () => ({
   SessionManager: vi.fn(() => ({ getAuthHeaders: vi.fn().mockReturnValue({}), saveToken: vi.fn() })),
 }));
@@ -33,8 +33,16 @@ describe("optimize_image in remote mode", () => {
     );
   });
 
-  it("returns download URL instead of local path in HTTP mode", async () => {
+  it("returns a usable pre-signed download link instead of a local path in HTTP mode", async () => {
     const { getAuthHeaders } = await import("../../api/client.js");
+    const { getSignedDownloadUrl } = await import("../../api/download.js");
+    vi.mocked(getSignedDownloadUrl).mockResolvedValueOnce({
+      url: "https://storage.googleapis.com/bucket/job-abc?X-Goog-Signature=abc",
+      filename: "photo.polished.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 45000,
+      expiresInSeconds: 900,
+    });
     const { uploadUrl } = await import("../../api/upload.js");
     const { triggerProcessing } = await import("../../api/process.js");
     const { waitForCompletion } = await import("../../api/status.js");
@@ -72,8 +80,14 @@ describe("optimize_image in remote mode", () => {
       baseUrl: "https://api.glassypic.com",
     });
 
-    // Should return download URL, not a local path
-    expect(result.output_path).toBe("https://api.glassypic.com/download/job-abc");
+    // A pre-signed link (works with no credentials), not the owner-gated /download/<job> URL
+    expect(result.output_path).toBe("https://storage.googleapis.com/bucket/job-abc?X-Goog-Signature=abc");
+    expect(result.output_path).not.toContain("api.glassypic.com/download/");
+    expect(result.download_expires_in_seconds).toBe(900);
+    expect(vi.mocked(getSignedDownloadUrl).mock.calls[0][0]).toMatchObject({
+      baseUrl: "https://api.glassypic.com",
+      jobId: "job-abc",
+    });
     expect(result.output_size_bytes).toBe(45000);
     expect(result.output_format).toBe("jpg");
   });

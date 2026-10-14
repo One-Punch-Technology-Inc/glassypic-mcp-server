@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 vi.mock("../auth/resolver.js", () => ({ resolveAuthHeaders: async () => ({}) }));
 
 import { startHttpServer } from "../transport/http.js";
+import { guestSessions } from "../auth/guest.js";
 
 const MAX = 2;
 const servers: McpServer[] = [];
@@ -121,6 +122,32 @@ describe("session eviction", () => {
 
     expect(await listTools(a)).toBe(200);
     expect(await listTools(b)).toBe(200);
+  });
+});
+
+describe("guest session lifecycle", () => {
+  it("opens a guest session with the MCP session and drops it when the session ends", async () => {
+    const id = await openSession();
+    // begin() ran for this session, so it can hold a guest token...
+    expect(guestSessions.set(id, "guest-token")).toBe(true);
+    expect(guestSessions.get(id)).toBe("guest-token");
+
+    const end = await fetch(`${baseUrl}/mcp`, { method: "DELETE", headers: { ...HEADERS, "mcp-session-id": id } });
+    expect(end.status).toBe(200);
+    liveSessions.splice(liveSessions.indexOf(id), 1);
+
+    // ...and the close removed it and stops a late upload from putting it back.
+    expect(guestSessions.get(id)).toBeNull();
+    expect(guestSessions.set(id, "late-token")).toBe(false);
+  });
+
+  it("drops the guest token of a session that is evicted at capacity", async () => {
+    const oldest = await openSession();
+    guestSessions.set(oldest, "oldest-token");
+    await openSession();
+    await openSession(); // capacity is 2, so the oldest is evicted
+
+    expect(guestSessions.get(oldest)).toBeNull();
   });
 });
 

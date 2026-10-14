@@ -1,4 +1,5 @@
-import { getRequestAuthHeaders } from "../auth/context.js";
+import { getRequestAuthHeaders, getRequestSessionId } from "../auth/context.js";
+import { guestSessions } from "../auth/guest.js";
 import { SessionManager } from "../session/manager.js";
 
 export interface ClientConfig {
@@ -30,6 +31,15 @@ export function getAuthHeaders(): Record<string, string> {
   // HTTP mode: context is set by the transport per request
   const contextHeaders = getRequestAuthHeaders();
   if (Object.keys(contextHeaders).length > 0) return contextHeaders;
+
+  // HTTP mode, no credentials: a guest. Use the guest session this MCP session created on its
+  // first upload. Never fall through to SessionManager here — that reads the *server's* own
+  // ~/.glassypic, which has nothing to do with the caller.
+  const sessionId = getRequestSessionId();
+  if (sessionId !== undefined) {
+    const guestToken = guestSessions.get(sessionId);
+    return guestToken ? { "X-Session-Token": guestToken } : {};
+  }
 
   // stdio mode: read from local session file
   return new SessionManager().getAuthHeaders();

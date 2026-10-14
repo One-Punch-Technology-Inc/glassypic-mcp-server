@@ -75,11 +75,20 @@ describe("optimizeImage headless auth", () => {
           credits_remaining: 95,
         });
       }
+      if (url.endsWith("/download/j1/url")) {
+        return jsonResponse({
+          url: "https://storage.googleapis.com/bucket/j1?sig=abc",
+          filename: "cat.webp",
+          content_type: "image/webp",
+          size: 1000,
+          expires_in: 900,
+        });
+      }
       throw new Error(`unexpected url ${url}`);
     });
 
     const { optimizeImage } = await import("../optimize.js");
-    await optimizeImage({
+    const result = await optimizeImage({
       input: "https://example.com/cat.jpg",
       output_width_px: 1080,
       output_height_px: 1920,
@@ -101,6 +110,13 @@ describe("optimizeImage headless auth", () => {
     const headers = autoCall![1].headers as Record<string, string>;
     expect(headers["X-Session-Token"]).toBe("guest_workspace_1");
     expect(headers["X-Slack-Idempotency-Key"]).toBe("slack:T1:1700000000.0001:instagram_story");
+
+    // The returned link is a pre-signed one, requested with the same identity as the job.
+    const linkCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/download/j1/url"));
+    expect(linkCall).toBeTruthy();
+    expect((linkCall![1].headers as Record<string, string>)["X-Session-Token"]).toBe("guest_workspace_1");
+    expect(result.output_path).toBe("https://storage.googleapis.com/bucket/j1?sig=abc");
+    expect(result.download_expires_in_seconds).toBe(900);
   });
 });
 
