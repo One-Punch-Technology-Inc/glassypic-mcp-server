@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "glassypic",
   "display_name": "GlassyPic",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Production-ready images in one pass: resize, crop, compress, convert format, upscale, tag for SEO",
   "long_description": "One tool that turns raw images into production-ready assets in a single pass (typically 60-80% size reduction), collapsing resize, crop, compression, format conversion, optional AI upscaling, and SEO metadata generation into one step. Inputs include JPEG, PNG, WebP, AVIF, GIF, SVG, ICO, HEIC, TIFF, and BMP. Outputs are JPEG, PNG, WebP, AVIF, GIF, SVG, and ICO. Accepts absolute local file paths or remote URLs as input. Upscaling is one step of that pipeline, performed by Real-ESRGAN on the image you supply: it takes no prompt, introduces no new subject matter, and returns your own image at higher resolution. It runs on two triggers: explicitly, when the caller sets output_upscale_factor, and automatically, when a resize target exceeds the source by more than 1.2x. The automatic path is the more common one and the caller does not request it. This is not a standalone image, video, or audio generation service.",
   "author": {
