@@ -108,15 +108,6 @@ describe("openBrowser", () => {
     expect(childProcess.execFile).not.toHaveBeenCalled();
   });
 
-  // tinify.ai is being transferred to Tinify B.V. Once it changes hands it is
-  // a third party's host, so an authorize URL on it must never reach a browser.
-  it("rejects the retired tinify.ai domain and its subdomains", async () => {
-    vi.stubGlobal("process", { ...process, platform: "darwin" });
-    await expect(openBrowser("https://tinify.ai/mcp/authorize?code=ABCD-7X4K-M2P9")).resolves.toBe(false);
-    await expect(openBrowser("https://app.tinify.ai/mcp")).resolves.toBe(false);
-    expect(childProcess.execFile).not.toHaveBeenCalled();
-  });
-
   it("rejects a multi-label squat on the owned host", async () => {
     vi.stubGlobal("process", { ...process, platform: "darwin" });
     await expect(openBrowser("https://glassypic.com.evil.test/")).resolves.toBe(false);

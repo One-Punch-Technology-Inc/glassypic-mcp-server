@@ -1,4 +1,13 @@
 import { ApiError } from "./client.js";
+import { getRequestSessionId } from "../auth/context.js";
+
+// The remote (HTTP) server registers no `login`/`logout` tools; the connector's OAuth flow
+// replaces them. A request session id is present only in HTTP mode.
+function signInHint(): string {
+  return getRequestSessionId() !== undefined
+    ? "Sign in through your connector's sign-in flow for a larger allowance"
+    : "Use the `login` tool to sign in for a larger allowance";
+}
 
 export interface ProcessingSettings {
   output_format?: "original" | "jpg" | "png" | "webp" | "avif" | "gif" | "svg" | "ico";
@@ -62,8 +71,7 @@ export async function triggerProcessing(params: ProcessParams): Promise<ProcessR
     if (response.status === 402) {
       throw new ApiError(
         "Insufficient credits for this operation.\n\n" +
-          "Use the `login` tool to sign in for more credits (free = 30/day, Pro = 3,300/month), " +
-          "or the `upgrade` tool to view plans.",
+          "Check your balance with the `status` tool, or use the `upgrade` tool to view plans.",
         402,
         body.detail,
         body,
@@ -73,9 +81,8 @@ export async function triggerProcessing(params: ProcessParams): Promise<ProcessR
     if (response.status === 429) {
       if (body.is_guest) {
         throw new ApiError(
-          `You've used all ${body.credits_limit || 20} free daily credits. ` +
-          `Log in for more credits (free = 30/day, Pro = 3,300/month). ` +
-          `Use the login tool to sign in, or wait until credits reset.`,
+          `Not enough free daily credits for this job (${body.credits_remaining} of ${body.credits_limit} left). ` +
+          `${signInHint()}, or wait until credits reset. Use the \`upgrade\` tool to view plans.`,
           429,
           body.detail,
           body,

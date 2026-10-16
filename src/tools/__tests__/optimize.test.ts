@@ -699,7 +699,6 @@ describe("optimizeImage", () => {
 
     it("contacts the host from GLASSYPIC_API_URL when no explicit baseUrl is passed", async () => {
       process.env.GLASSYPIC_API_URL = "https://configured.example.com";
-      delete process.env.TINIFY_API_URL;
 
       vi.mocked(uploadFile).mockResolvedValueOnce({
         temp_file_id: "temp-1",

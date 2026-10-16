@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { triggerProcessing, type ProcessingSettings } from "../process.js";
+import { requestContext } from "../../auth/context.js";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -212,5 +213,38 @@ describe("triggerProcessing", () => {
         authHeaders: { "X-Session-Token": "token" },
       })
     ).rejects.toThrow(/Insufficient credits/);
+  });
+
+  describe("exhausted guest credits", () => {
+    const guestExhausted = () =>
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: new Headers(),
+        json: async () => ({ is_guest: true, credits_limit: 20, detail: "Insufficient credits." }),
+      });
+    const run = () =>
+      triggerProcessing({
+        baseUrl: "https://api.glassypic.com",
+        tempFileIds: ["temp-1"],
+        settings: { output_seo_tag_gen: true },
+        authHeaders: {},
+      });
+
+    it("points local (stdio) guests to the login tool and states no allowance figures", async () => {
+      guestExhausted();
+      const error = await run().catch((e) => e);
+      expect(error.message).toMatch(/`login` tool/);
+      expect(error.message).not.toMatch(/\/day|\/month/);
+    });
+
+    it("points remote (HTTP) guests to the connector sign-in, not a login tool that does not exist", async () => {
+      guestExhausted();
+      const error = await requestContext
+        .run({ authHeaders: {}, sessionId: "mcp-session-1" }, run)
+        .catch((e) => e);
+      expect(error.message).toMatch(/connector/);
+      expect(error.message).not.toMatch(/`login` tool/);
+    });
   });
 });

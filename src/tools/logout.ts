@@ -7,7 +7,7 @@ export async function logoutTool(): Promise<string> {
 
   const mcpToken = sessionManager.getMcpToken();
   if (!mcpToken) {
-    return "Not logged in. Already using guest session (20 free credits/day).";
+    return "Not logged in. Already using guest session.";
   }
 
   // Confirm that the token still represents an authenticated account before
@@ -21,7 +21,7 @@ export async function logoutTool(): Promise<string> {
     });
     if (!status.logged_in) {
       sessionManager.clearMcpToken();
-      return "Not logged in. Already using guest session (20 free credits/day).";
+      return "Not logged in. Already using guest session.";
     }
     await revokeToken(baseUrl, mcpToken);
   } catch {
@@ -33,6 +33,6 @@ export async function logoutTool(): Promise<string> {
   sessionManager.clearMcpToken();
 
   return revokeFailed
-    ? "Logged out locally, but GlassyPic could not be reached to revoke the token server-side — it remains valid until it expires. Running login again issues a new token and revokes this one. Using guest session (20 free credits/day)."
-    : "Logged out. Using guest session (20 free credits/day).";
+    ? "Logged out locally, but GlassyPic could not be reached to revoke the token server-side — it remains valid until it expires. Running login again issues a new token and revokes this one. Using guest session."
+    : "Logged out. Using guest session.";
 }

@@ -12,21 +12,10 @@ interface SessionData {
 export class SessionManager {
   public readonly sessionDir: string;
   private readonly sessionFile: string;
-  // Legacy ~/.tinify/session.json. Read-only fallback so users logged in before
-  // the GlassyPic rename are not silently logged out. Only active in default mode
-  // (null when a custom sessionDir is injected, e.g. tests).
-  private readonly legacySessionFile: string | null;
 
   constructor(sessionDir?: string) {
-    // Only an omitted argument is "default mode". An explicit value — including
-    // "" — is a custom dir and must NOT trigger legacy ~/.tinify migration (that
-    // would write real credentials to a relative ./session.json).
-    const isDefault = sessionDir === undefined;
-    this.sessionDir = isDefault ? path.join(os.homedir(), ".glassypic") : sessionDir;
+    this.sessionDir = sessionDir ?? path.join(os.homedir(), ".glassypic");
     this.sessionFile = path.join(this.sessionDir, "session.json");
-    this.legacySessionFile = isDefault
-      ? path.join(os.homedir(), ".tinify", "session.json")
-      : null;
   }
 
   private parseFile(file: string): SessionData | null {
@@ -38,25 +27,7 @@ export class SessionManager {
   }
 
   private readData(): SessionData | null {
-    const current = this.parseFile(this.sessionFile);
-    if (current) return current;
-
-    // New file absent — migrate a legacy ~/.tinify session forward, once, so the
-    // rename doesn't log existing users out. After this, reads/writes use the new
-    // path and the old file is removed.
-    if (this.legacySessionFile) {
-      const legacy = this.parseFile(this.legacySessionFile);
-      if (legacy) {
-        this.writeData(legacy);
-        try {
-          fs.rmSync(this.legacySessionFile);
-        } catch {
-          // best effort — a leftover legacy file is harmless (new path now wins)
-        }
-        return legacy;
-      }
-    }
-    return null;
+    return this.parseFile(this.sessionFile);
   }
 
   private writeData(data: SessionData): void {

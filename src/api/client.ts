@@ -24,8 +24,7 @@ export class ApiError extends Error {
 /**
  * Returns auth headers for an API call.
  * In HTTP mode (request context present): uses per-request auth from context.
- * In stdio mode (no context): reads from ~/.glassypic/session.json via SessionManager
- * (falls back to the legacy ~/.tinify path for pre-rename logins).
+ * In stdio mode (no context): reads from ~/.glassypic/session.json via SessionManager.
  */
 export function getAuthHeaders(): Record<string, string> {
   // HTTP mode: context is set by the transport per request
@@ -68,9 +67,7 @@ const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 /**
  * Resolves and validates the API base URL.
  *
- * Precedence is GLASSYPIC_API_URL, then TINIFY_API_URL, then the default. The
- * TINIFY_API_URL fallback is deliberate (docs/ROADMAP.md:19) — pre-rename
- * deployments still set it.
+ * Reads GLASSYPIC_API_URL, then falls back to the default.
  *
  * Images and a Bearer token are sent to this host, so https is required except
  * for loopback development. Validation is lazy — callers invoke it at call time
@@ -80,12 +77,8 @@ const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
  * Mirrors apps/slack/src/config.ts:14-26.
  */
 export function resolveApiBaseUrl(env: NodeJS.ProcessEnv = process.env): ApiBaseUrl {
-  const hasGlassypic = env.GLASSYPIC_API_URL !== undefined;
-  const hasTinify = env.TINIFY_API_URL !== undefined;
-  const raw = env.GLASSYPIC_API_URL ?? env.TINIFY_API_URL ?? DEFAULT_BASE_URL;
-
-  // Determine which variable was actually used
-  const varName = hasGlassypic ? "GLASSYPIC_API_URL" : hasTinify ? "TINIFY_API_URL" : "GLASSYPIC_API_URL";
+  const raw = env.GLASSYPIC_API_URL ?? DEFAULT_BASE_URL;
+  const varName = "GLASSYPIC_API_URL";
 
   let parsed: URL;
   try {

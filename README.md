@@ -328,12 +328,7 @@ All processing happens server-side via the [GlassyPic API](https://api.glassypic
 
 ## Credits
 
-| | Guest | Free | Pro | Max |
-|---|---|---|---|---|
-| Credits/day or month | 20/day | 30/day | 3,300/month | 12,000/month |
-| Images/day (default settings) | ~5 | ~7 | ~825 | ~3,000 |
-| Cost per image | 4 credits (compress + SEO tags, defaults) | same | same | same |
-| Signup required | No | Free signup | Paid | Paid |
+Guests can use the tool with no signup. Logging in links your GlassyPic account and shares its credits with the web app. Allowances differ by plan and change over time: run the `status` tool for your live balance, or see [glassypic.com/pricing](https://glassypic.com/pricing) for plans. A default run (compress + SEO tags) costs 4 credits per image.
 
 Session data is stored locally at `~/.glassypic/session.json` and persists across invocations. 
 
@@ -389,7 +384,7 @@ Resets: 03/01/2026, 12:00 AM PST
 
 ### logout
 
-Revokes the session and reverts to guest mode (20 credits/day).
+Revokes the session and reverts to guest mode.
 
 ### upgrade
 
@@ -407,7 +402,7 @@ Tools: optimize_image, login, logout, status, upgrade
 - Use status to check credits before batch processing
 - Credits: 3 to compress (always), +1 if width/height is set, +2 to upscale, +1 for SEO tags (default). A full pipeline is 7 credits. SVG/ICO output is a flat 1 credit.
 - Resizing up past 1.2x the source triggers an automatic AI upscale (+2 credits) even without output_upscale_factor set — a resize-only call on a small image can cost 7, not 5.
-- Guest: 20 credits/day. Free account: 30/day. Pro: 3,300/month.
+- Allowances vary by plan; call status for the live balance instead of assuming a number.
 - Always use absolute file paths, not relative.
 - Set only width OR height for proportional resize. Set both for exact dimensions.
 - When both dimensions are set, use output_resize_behavior: "crop" for photos, "pad" for logos/icons.
@@ -430,7 +425,7 @@ Tools: optimize_image, login, logout, status, upgrade
 
 **"Insufficient credits" error:**
 - Use the `status` tool to check remaining credits
-- Use the `login` tool to sign in for more credits (free accounts get 30/day)
+- Use the `login` tool to sign in for more credits
 - Use the `upgrade` tool to open the pricing page and compare plans
 - Disable SEO tags (`output_seo_tag_gen: false`) to save 1 credit; note that resizing up past 1.2× the source still adds an automatic 2-credit upscale regardless
 
@@ -481,7 +476,6 @@ remote HTTP transport additionally calls Supabase for authentication.)
 | Variable | Default | Purpose |
 |---|---|---|
 | `GLASSYPIC_API_URL` | `https://api.glassypic.com` | API endpoint. Development and self-hosting only — most users never set it. |
-| `TINIFY_API_URL` | — | Pre-rename alias for the above. Retained for existing deployments; `GLASSYPIC_API_URL` wins when both are set. |
 
 The value must be an `https` URL. Plain `http` is accepted only for `localhost`
 and `127.0.0.1`, because your images and `Bearer` token are sent to this host. An

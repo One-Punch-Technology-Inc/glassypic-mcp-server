@@ -59,7 +59,7 @@ describe("logoutTool", () => {
 
     expect(getAccountStatusMock).not.toHaveBeenCalled();
     expect(revokeTokenMock).not.toHaveBeenCalled();
-    expect(result).toBe("Not logged in. Already using guest session (20 free credits/day).");
+    expect(result).toBe("Not logged in. Already using guest session.");
   });
   it("clears a stale token and keeps the guest message when status says not logged in", async () => {
     getMcpTokenMock.mockReturnValue("mcp_expired");
@@ -69,7 +69,7 @@ describe("logoutTool", () => {
 
     expect(revokeTokenMock).not.toHaveBeenCalled();
     expect(clearMcpTokenMock).toHaveBeenCalledOnce();
-    expect(result).toBe("Not logged in. Already using guest session (20 free credits/day).");
+    expect(result).toBe("Not logged in. Already using guest session.");
   });
 
   it("still clears the token locally when revokeToken throws, and warns", async () => {
@@ -91,7 +91,7 @@ describe("logoutTool", () => {
 
     const result = await logoutTool();
 
-    expect(result).toBe("Logged out. Using guest session (20 free credits/day).");
+    expect(result).toBe("Logged out. Using guest session.");
   });
 
   it("still clears the token locally when resolveApiBaseUrl throws on a malformed GLASSYPIC_API_URL", async () => {

@@ -8,9 +8,9 @@ import { execFile } from "node:child_process";
  * still open https://evil.example/harvest if that value were ever wrong. This
  * list is what actually closes that path.
  *
- * `tinify.ai` was removed 2026-09-10: settings.web_url is glassypic.com in every
- * environment, and the domain is being transferred to Tinify B.V. — after which
- * trusting it would hand a third party's host to the user's browser.
+ * The pre-rename domain was removed 2026-09-10: settings.web_url is glassypic.com
+ * in every environment, and that domain is being transferred to a third party —
+ * after which trusting it would hand their host to the user's browser.
  */
 const OWNED_HOSTS = ["glassypic.com"];
 
